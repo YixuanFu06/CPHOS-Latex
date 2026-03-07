@@ -1,0 +1,368 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%  Project: CPHOS LaTeX Template
+%%  File: cphos-scoring.sty
+%%  Copyright © 2026 gameswu & CPHOS (www.cphos.cn)
+%%
+%%  Permission is hereby granted, free of charge, to any person obtaining a 
+%%  copy of this software and associated documentation files (the "Software"), 
+%%  to deal in the Software without restriction, including without limitation 
+%%  the rights to use, copy, modify, merge, publish, distribute, sublicense, 
+%%  and/or sell copies of the Software, and to permit persons to whom the 
+%%  Software is furnished to do so, subject to the following conditions:
+%%
+%%  The above copyright notice and this permission notice shall be included 
+%%  in all copies or substantial portions of the Software.
+%%
+%%  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS 
+%%  OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
+%%  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL 
+%%  THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER 
+%%  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING 
+%%  FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER 
+%%  DEALINGS IN THE SOFTWARE.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% 用法: \usepackage{cphos-scoring}
+
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{cphos-scoring}[2026/03/08 v1.0 CPHOS Scoring System]
+
+\RequirePackage{xparse}
+\RequirePackage{xcolor}
+
+\ExplSyntaxOn
+
+% ============================================
+% 存储结构
+% ============================================
+\seq_new:N \g__cphos_entries_seq
+
+% ============================================
+% 分值检查开关
+% ============================================
+\bool_new:N \g__cphos_check_score_bool
+\bool_gset_false:N \g__cphos_check_score_bool
+
+\NewDocumentCommand{\enablescorecheck}{}{
+    \bool_gset_true:N \g__cphos_check_score_bool
+}
+\NewDocumentCommand{\disablescorecheck}{}{
+    \bool_gset_false:N \g__cphos_check_score_bool
+}
+
+% ============================================
+% 内部函数
+% ============================================
+
+\cs_new:Npn \__cphos_clear: {
+    \seq_gclear:N \g__cphos_entries_seq
+}
+
+\cs_new:Npn \__cphos_add:nnnn #1 #2 #3 #4 {
+    \seq_gput_right:Nn \g__cphos_entries_seq {{#1}{#2}{#3}{#4}}
+}
+
+% ============================================
+% 用户接口
+% ============================================
+
+\NewDocumentCommand{\clearScores}{}{
+    \__cphos_clear:
+}
+
+\NewDocumentCommand{\scorePart}{m m}{
+    \__cphos_add:nnnn {0}{#1}{#2}{part}
+}
+
+\NewDocumentCommand{\scorepart}{m m}{
+    \__cphos_add:nnnn {1}{#1}{#2}{q1}
+}
+
+\NewDocumentCommand{\scoresubpart}{m m}{
+    \__cphos_add:nnnn {2}{#1}{#2}{q2}
+}
+
+\NewDocumentCommand{\scoresubsubpart}{m m}{
+    \__cphos_add:nnnn {3}{#1}{#2}{q3}
+}
+
+\NewDocumentCommand{\eqtag}{m}{
+    \tag*{(#1)}
+}
+
+\NewDocumentCommand{\eqtagscore}{m m}{
+    \tag*{(#1)}
+    \__cphos_add:nnnn {4}{#1}{#2}{eq}
+}
+
+\NewDocumentCommand{\addtext}{m m}{
+    \__cphos_add:nnnn {4}{#1}{#2}{text}
+}
+
+% ============================================
+% 评分标准生成
+% ============================================
+
+\tl_new:N \l__cphos_output_tl
+\int_new:N \l__cphos_level_int
+\prop_new:N \l__cphos_eq_by_score_prop
+\seq_new:N \l__cphos_score_values_seq
+\tl_new:N \l__cphos_text_items_tl
+\int_new:N \l__cphos_eq_count_int
+
+% 分值检查变量 - 使用栈结构追踪层级
+\seq_new:N \g__cphos_stack_level_seq
+\seq_new:N \g__cphos_stack_label_seq
+\seq_new:N \g__cphos_stack_declared_seq
+\seq_new:N \g__cphos_stack_actual_seq
+\seq_new:N \g__cphos_stack_hassub_seq
+\seq_new:N \g__cphos_warnings_seq
+
+% 专用临时变量
+\tl_new:N \l__cphos_tmp_level_tl
+\tl_new:N \l__cphos_tmp_label_tl
+\tl_new:N \l__cphos_tmp_declared_tl
+\tl_new:N \l__cphos_tmp_actual_tl
+\tl_new:N \l__cphos_tmp_hassub_tl
+\int_new:N \l__cphos_pop_level_int
+\int_new:N \l__cphos_pop_declared_int
+\int_new:N \l__cphos_pop_actual_int
+\int_new:N \l__cphos_add_tmp_int
+
+% 添加式子到分组
+\cs_new:Npn \__cphos_add_eq:nn #1 #2 {
+    \prop_if_in:NnTF \l__cphos_eq_by_score_prop {#2} {
+        \prop_get:NnN \l__cphos_eq_by_score_prop {#2} \l__cphos_tmp_label_tl
+        \tl_put_right:Nn \l__cphos_tmp_label_tl {（#1）}
+        \prop_gput:NnV \l__cphos_eq_by_score_prop {#2} \l__cphos_tmp_label_tl
+    }{
+        \prop_gput:Nnn \l__cphos_eq_by_score_prop {#2} {（#1）}
+        \seq_gput_right:Nn \l__cphos_score_values_seq {#2}
+    }
+    % 累加到栈顶的实际分数
+    \seq_if_empty:NF \g__cphos_stack_actual_seq {
+        \seq_gpop_right:NN \g__cphos_stack_actual_seq \l__cphos_tmp_actual_tl
+        \int_set:Nn \l__cphos_add_tmp_int { \l__cphos_tmp_actual_tl + #2 }
+        \seq_gput_right:Nx \g__cphos_stack_actual_seq { \int_use:N \l__cphos_add_tmp_int }
+    }
+}
+
+% 计算式子数量
+\cs_new:Npn \__cphos_count_eqs:N #1 {
+    \int_zero:N \l__cphos_eq_count_int
+    \tl_map_inline:Nn #1 {
+        \token_if_eq_charcode:NNT ##1 （ {
+            \int_incr:N \l__cphos_eq_count_int
+        }
+    }
+}
+
+% 输出当前积累的项目
+\cs_new:Npn \__cphos_flush_items: {
+    \seq_sort:Nn \l__cphos_score_values_seq {
+        \int_compare:nNnTF {##1} > {##2}
+            { \sort_return_swapped: }
+            { \sort_return_same: }
+    }
+    \seq_map_inline:Nn \l__cphos_score_values_seq {
+        \prop_get:NnN \l__cphos_eq_by_score_prop {##1} \l_tmpa_tl
+        \__cphos_count_eqs:N \l_tmpa_tl
+        \tl_put_right:NV \l__cphos_output_tl \l_tmpa_tl
+        \int_compare:nNnTF {\l__cphos_eq_count_int} > {1} {
+            \tl_put_right:Nn \l__cphos_output_tl {式各##1分，}
+        }{
+            \tl_put_right:Nn \l__cphos_output_tl {式##1分，}
+        }
+    }
+    \tl_if_empty:NF \l__cphos_text_items_tl {
+        \tl_put_right:NV \l__cphos_output_tl \l__cphos_text_items_tl
+    }
+    \prop_gclear:N \l__cphos_eq_by_score_prop
+    \seq_gclear:N \l__cphos_score_values_seq
+    \tl_clear:N \l__cphos_text_items_tl
+}
+
+% 替换最后的逗号
+\cs_new:Npn \__cphos_replace_last_comma:Nn #1 #2 {
+    \tl_if_empty:NF #1 {
+        \regex_replace_once:nnN {，\Z} {#2} #1
+    }
+}
+
+% 临时变量用于警告
+\tl_new:N \l__cphos_warn_msg_tl
+\int_new:N \l__cphos_tmpd_int
+
+% 弹出栈顶并检查，将声明分数累加到父层级
+\cs_new:Npn \__cphos_pop_and_check: {
+    \seq_gpop_right:NN \g__cphos_stack_level_seq \l__cphos_tmp_level_tl
+    \int_set:Nn \l__cphos_pop_level_int { \l__cphos_tmp_level_tl }
+    \seq_gpop_right:NN \g__cphos_stack_label_seq \l__cphos_tmp_label_tl
+    \seq_gpop_right:NN \g__cphos_stack_declared_seq \l__cphos_tmp_declared_tl
+    \int_set:Nn \l__cphos_pop_declared_int { \l__cphos_tmp_declared_tl }
+    \seq_gpop_right:NN \g__cphos_stack_actual_seq \l__cphos_tmp_actual_tl
+    \int_set:Nn \l__cphos_pop_actual_int { \l__cphos_tmp_actual_tl }
+    \seq_gpop_right:NN \g__cphos_stack_hassub_seq \l__cphos_tmp_hassub_tl
+    
+    % 检查分数是否匹配
+    \bool_if:NT \g__cphos_check_score_bool {
+        \int_compare:nNnF { \l__cphos_pop_declared_int } = { \l__cphos_pop_actual_int } {
+            % 构建警告消息
+            \tl_clear:N \l__cphos_warn_msg_tl
+            \int_case:nnF {\l__cphos_pop_level_int} {
+                {0}{ \tl_set:Nn \l__cphos_warn_msg_tl { Part~ } \tl_put_right:NV \l__cphos_warn_msg_tl \l__cphos_tmp_label_tl }
+                {1}{ \tl_set:Nn \l__cphos_warn_msg_tl { 第（ } \tl_put_right:NV \l__cphos_warn_msg_tl \l__cphos_tmp_label_tl \tl_put_right:Nn \l__cphos_warn_msg_tl {）问 } }
+                {2}{ \tl_set:Nn \l__cphos_warn_msg_tl { 第（ } \tl_put_right:NV \l__cphos_warn_msg_tl \l__cphos_tmp_label_tl \tl_put_right:Nn \l__cphos_warn_msg_tl {）问 } }
+                {3}{ \tl_set:Nn \l__cphos_warn_msg_tl { 第（ } \tl_put_right:NV \l__cphos_warn_msg_tl \l__cphos_tmp_label_tl \tl_put_right:Nn \l__cphos_warn_msg_tl {）问 } }
+            }{ \tl_set:Nn \l__cphos_warn_msg_tl { 未知层级 } }
+            \tl_put_right:Nx \l__cphos_warn_msg_tl { ：声明 \int_use:N \l__cphos_pop_declared_int 分 }
+            \str_if_eq:VnTF \l__cphos_tmp_hassub_tl {1} {
+                \tl_put_right:Nx \l__cphos_warn_msg_tl { ，子层级声明合计~ \int_use:N \l__cphos_pop_actual_int 分 }
+            }{
+                \tl_put_right:Nx \l__cphos_warn_msg_tl { ，实际~ \int_use:N \l__cphos_pop_actual_int 分 }
+            }
+            \seq_gput_right:NV \g__cphos_warnings_seq \l__cphos_warn_msg_tl
+        }
+    }
+    
+    % 将弹出项的声明分数累加到新栈顶（父层级）的实际分数
+    \seq_if_empty:NF \g__cphos_stack_actual_seq {
+        \seq_gpop_right:NN \g__cphos_stack_actual_seq \l__cphos_tmp_actual_tl
+        \int_set:Nn \l__cphos_add_tmp_int { \l__cphos_tmp_actual_tl + \l__cphos_pop_declared_int }
+        \seq_gput_right:Nx \g__cphos_stack_actual_seq { \int_use:N \l__cphos_add_tmp_int }
+        % 标记父层级有子层级
+        \seq_gpop_right:NN \g__cphos_stack_hassub_seq \l__cphos_tmp_hassub_tl
+        \seq_gput_right:Nn \g__cphos_stack_hassub_seq {1}
+    }
+}
+
+% 弹出所有层级 >= 指定层级的栈项（递归实现）
+\cs_new:Npn \__cphos_pop_until_aux:n #1 {
+    \seq_if_empty:NTF \g__cphos_stack_level_seq {
+        % 栈空，停止
+    }{
+        \seq_get_right:NN \g__cphos_stack_level_seq \l__cphos_tmp_level_tl
+        \int_compare:nNnTF { \l__cphos_tmp_level_tl } < {#1} {
+            % 栈顶层级小于目标，停止
+        }{
+            \__cphos_pop_and_check:
+            \__cphos_pop_until_aux:n {#1}
+        }
+    }
+}
+\cs_new:Npn \__cphos_pop_until:n #1 {
+    \__cphos_pop_until_aux:n {#1}
+}
+
+% 压入新层级
+\cs_new:Npn \__cphos_push_level:nnn #1 #2 #3 {
+    \__cphos_pop_until:n {#1}
+    \seq_gput_right:Nn \g__cphos_stack_level_seq {#1}
+    \seq_gput_right:Nn \g__cphos_stack_label_seq {#2}
+    \seq_gput_right:Nn \g__cphos_stack_declared_seq {#3}
+    \seq_gput_right:Nn \g__cphos_stack_actual_seq {0}
+    \seq_gput_right:Nn \g__cphos_stack_hassub_seq {0}
+}
+
+% 处理单个条目
+\cs_new:Npn \__cphos_process:nnnn #1 #2 #3 #4 {
+    \int_set:Nn \l__cphos_level_int {#1}
+    \int_case:nnF {\l__cphos_level_int} {
+        {0}{
+            \__cphos_flush_items:
+            \__cphos_replace_last_comma:Nn \l__cphos_output_tl {；}
+            \__cphos_push_level:nnn {0}{#2}{#3}
+            \tl_put_right:Nn \l__cphos_output_tl { \par Part~#2~#3分：}
+        }
+        {1}{
+            \__cphos_flush_items:
+            \__cphos_replace_last_comma:Nn \l__cphos_output_tl {；}
+            \__cphos_push_level:nnn {1}{#2}{#3}
+            \tl_put_right:Nn \l__cphos_output_tl { \par 第（#2）问#3分：}
+        }
+        {2}{
+            \__cphos_flush_items:
+            \__cphos_replace_last_comma:Nn \l__cphos_output_tl {；}
+            \__cphos_push_level:nnn {2}{#2}{#3}
+            \tl_put_right:Nn \l__cphos_output_tl { \par 第（#2）问#3分：}
+        }
+        {3}{
+            \__cphos_flush_items:
+            \__cphos_replace_last_comma:Nn \l__cphos_output_tl {；}
+            \__cphos_push_level:nnn {3}{#2}{#3}
+            \tl_put_right:Nn \l__cphos_output_tl { \par 第（#2）问#3分：}
+        }
+        {4}{
+            \str_if_eq:nnTF {#4} {eq} {
+                \__cphos_add_eq:nn {#2} {#3}
+            }{
+                \tl_put_right:Nn \l__cphos_text_items_tl {#2#3分，}
+                % 累加到栈顶
+                \seq_if_empty:NF \g__cphos_stack_actual_seq {
+                    \seq_gpop_right:NN \g__cphos_stack_actual_seq \l__cphos_tmp_actual_tl
+                    \int_set:Nn \l__cphos_add_tmp_int { \l__cphos_tmp_actual_tl + #3 }
+                    \seq_gput_right:Nx \g__cphos_stack_actual_seq { \int_use:N \l__cphos_add_tmp_int }
+                }
+            }
+        }
+    }{}
+}
+
+% 弹出所有剩余栈项（递归实现）
+\cs_new:Npn \__cphos_pop_all_aux: {
+    \seq_if_empty:NTF \g__cphos_stack_level_seq {
+        % 栈空，停止
+    }{
+        \__cphos_pop_and_check:
+        \__cphos_pop_all_aux:
+    }
+}
+\cs_new:Npn \__cphos_pop_all: {
+    \__cphos_pop_all_aux:
+}
+
+% 生成完整评分标准
+\cs_new:Npn \__cphos_generate:n #1 {
+    \tl_clear:N \l__cphos_output_tl
+    \prop_gclear:N \l__cphos_eq_by_score_prop
+    \seq_gclear:N \l__cphos_score_values_seq
+    \tl_clear:N \l__cphos_text_items_tl
+    \seq_gclear:N \g__cphos_warnings_seq
+    % 清空栈
+    \seq_gclear:N \g__cphos_stack_level_seq
+    \seq_gclear:N \g__cphos_stack_label_seq
+    \seq_gclear:N \g__cphos_stack_declared_seq
+    \seq_gclear:N \g__cphos_stack_actual_seq
+    \seq_gclear:N \g__cphos_stack_hassub_seq
+    
+    \seq_map_inline:Nn \g__cphos_entries_seq {
+        \__cphos_process:nnnn ##1
+    }
+    
+    \__cphos_flush_items:
+    \__cphos_pop_all:
+    \__cphos_replace_last_comma:Nn \l__cphos_output_tl {。}
+    
+    \par\noindent\bfseries 评分标准：本题满分#1分。
+    \l__cphos_output_tl
+    \mdseries
+    
+    \bool_if:NT \g__cphos_check_score_bool {
+        \seq_if_empty:NF \g__cphos_warnings_seq {
+            \par\noindent\textcolor{red}{\bfseries 【分值检查警告】}
+            \seq_map_inline:Nn \g__cphos_warnings_seq {
+                \par\noindent\textcolor{red}{##1}
+            }
+        }
+    }
+}
+
+\NewDocumentCommand{\scoring}{m}{
+    \par\vspace{\baselineskip}%  % 评分标准前空一行
+    \__cphos_generate:n {#1}
+    \par\vspace{\baselineskip}%  % 评分标准后空一行
+}
+
+\ExplSyntaxOff
+
+\endinput

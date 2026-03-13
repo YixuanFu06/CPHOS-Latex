@@ -137,7 +137,7 @@
 \newcommand{\cphoswatermark}[1]{\renewcommand{\cphos@watermarkfile}{#1}}
 
 \ifcphos@watermark
-    \AddToShipoutPictureBG{%
+    \AddToShipoutPictureFG{%  % 前景层：浮于图片之上，文字因高对比度视觉上仍居最前
         \AtPageCenter{%
             \begin{tikzpicture}[remember picture, overlay]
                 \node[opacity=0.15] at (0,0) {%
@@ -410,15 +410,15 @@
     \vspace{0.5em}
     \noindent
     \begin{tabular}{@{}c@{\quad}c@{\quad}c@{\quad}p{4cm}@{}}
-        \includegraphics[width=2.8cm, align=c]{#1} &
-        \includegraphics[width=2.8cm, align=c]{#2} &
-        \includegraphics[width=2.8cm, align=c]{#3} &
+        \includegraphics[width=2.9cm, align=c]{#1} &
+        \includegraphics[width=2.9cm, align=c]{#2} &
+        \includegraphics[width=2.9cm, align=c]{#3} &
         \begin{tabular}[c]{@{}c@{}}
             {\small 邮箱} \\
             {\small #4} \\
             {\small 微信小程序} \\
             {\small #5}
-        \end{tabular} \\[-0.5em]
+        \end{tabular} \\[-0.3em]
         
         {\small 微信公众号} & {\small 官方网站} & {\small CPHOS论坛} & \\
         {\small CPHOS} & {\small \url{www.cphos.cn}} & & \\
